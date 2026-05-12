@@ -36,7 +36,7 @@ export function UnlockScreen() {
             transition={{ type: 'spring', damping: 12 }}
             className="w-24 h-24 bg-white/5 border border-white/10 rounded-[2rem] overflow-hidden mx-auto mb-8 shadow-2xl relative group"
           >
-            <img src="/logo.jpg" alt="Emity Logo" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+            <img src="/logo.png" alt="Emity Logo" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
             <div className="absolute inset-0 bg-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
           </motion.div>
           

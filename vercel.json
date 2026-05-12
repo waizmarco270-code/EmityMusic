@@ -3,15 +3,11 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "server.ts"
-    },
-    {
-      "source": "/(sw.js|manifest.json|logo.jpg)",
-      "destination": "/$1"
+      "destination": "/api/index.ts"
     },
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": "/"
     }
   ]
 }

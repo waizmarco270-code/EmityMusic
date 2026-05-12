@@ -15,31 +15,39 @@ app.use(cors());
 app.use(express.json());
 
 // API Routes
-app.get("/api/search", async (req, res) => {
+app.get(["/api/health", "/health"], (req, res) => {
+  res.json({ status: "ok", vercel: !!process.env.VERCEL, timestamp: new Date().toISOString() });
+});
+
+app.get(["/api/search", "/search"], async (req, res) => {
   const query = req.query.q as string;
   if (!query) return res.status(400).json({ error: "Query required" });
 
   try {
     const searchResults = await yts(query);
-    const tracks = searchResults.videos.slice(0, 20).map(video => ({
+    const videos = searchResults.videos.length > 0 ? searchResults.videos : (searchResults.all?.filter((i: any) => i.type === 'video') || []);
+    
+    const tracks = videos.slice(0, 30).map((video: any) => ({
       id: video.videoId,
       title: video.title,
-      artist: video.author.name,
-      album: "YouTube",
-      artwork: video.thumbnail,
+      artist: video.author?.name || "Unknown Artist",
+      album: "YouTube Music",
+      artwork: video.thumbnail || video.image,
       url: video.url,
-      duration: video.duration.seconds,
+      duration: video.duration?.seconds || 0,
       genre: "Music",
       isYoutube: true
     }));
-    res.set('Cache-Control', 'public, s-maxage=3600');
-    res.json({ results: tracks });
+
+    res.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=600');
+    res.json({ results: tracks, count: tracks.length });
   } catch (error) {
-    res.status(500).json({ error: "Search failed" });
+    console.error("Search failed:", error);
+    res.status(500).json({ error: "Search execution failed", details: String(error) });
   }
 });
 
-app.get("/api/stream", async (req, res) => {
+app.get(["/api/stream", "/stream"], async (req, res) => {
   const videoId = req.query.id as string;
   if (!videoId) return res.status(400).json({ error: "ID required" });
 
@@ -75,7 +83,7 @@ app.get("/api/stream", async (req, res) => {
   }
 });
 
-app.get("/api/trending", async (req, res) => {
+app.get(["/api/trending", "/trending"], async (req, res) => {
   try {
     const searchResults = await yts("trending hits 2025");
     const tracks = searchResults.videos.slice(0, 20).map(video => ({

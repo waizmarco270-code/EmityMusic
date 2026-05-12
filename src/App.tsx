@@ -25,8 +25,16 @@ export default function App() {
     const handler = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      // Log for debugging on Vercel
+      console.log('PWA Install prompt deferred');
     };
     window.addEventListener('beforeinstallprompt', handler);
+    
+    // Log if app is already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      console.log('App is running in standalone mode');
+    }
+
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 

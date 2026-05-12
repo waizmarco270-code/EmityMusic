@@ -15,7 +15,7 @@ export function Sidebar() {
     <aside className="w-64 flex-shrink-0 flex flex-col p-6 h-full border-r border-white/5 bg-black/20 backdrop-blur-xl hidden md:flex">
       <div className="flex items-center gap-3 px-2 mb-10">
         <div className="w-8 h-8 rounded-lg overflow-hidden shadow-lg shadow-indigo-500/20">
-          <img src="/logo.jpg" alt="Emity" className="w-full h-full object-cover" />
+          <img src="/logo.png" alt="Emity" className="w-full h-full object-cover" />
         </div>
         <span className="text-xl font-bold tracking-tight text-white uppercase">
           Emity
