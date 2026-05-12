@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import cors from "cors";
+import yts from "yt-search";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,31 +52,84 @@ app.get(["/api/search", "/search"], async (req, res) => {
   const query = req.query.q as string;
   if (!query) return res.status(400).json({ error: "Query required" });
 
+  const apiKey = process.env.YOUTUBE_API_KEY;
+
+  // TIER 1: Official YouTube API
+  if (apiKey) {
+    try {
+      const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=30&key=${apiKey}`;
+      const response = await fetch(searchUrl);
+      const data = await response.json();
+
+      if (data.items && data.items.length > 0) {
+        const tracks = data.items.map((item: any) => ({
+          id: item.id.videoId,
+          title: item.snippet.title,
+          artist: item.snippet.channelTitle,
+          album: "YouTube Music",
+          artwork: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
+          url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+          duration: 0,
+          genre: "Music",
+          isYoutube: true
+        }));
+        res.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=600');
+        return res.json({ results: tracks, source: "official_api" });
+      }
+    } catch (apiError) {
+      console.error("Official YouTube API failed, moving to Tier 2:", apiError);
+    }
+  }
+
+  // TIER 2: Piped API
   try {
     const data = await fetchFromPiped(`/search?q=${encodeURIComponent(query)}&filter=videos`);
-    
     const items = (data.items || []).filter((i: any) => i.type === 'video');
     
-    const tracks = items.map((video: any) => {
-      const videoId = video.url.includes("v=") ? video.url.split("v=")[1] : video.url.split("/").pop();
-      return {
-        id: videoId,
-        title: video.title,
-        artist: video.uploaderName,
-        album: "YouTube Music",
-        artwork: video.thumbnail,
-        url: `https://www.youtube.com/watch?v=${videoId}`,
-        duration: video.duration || 0,
-        genre: "Music",
-        isYoutube: true
-      };
-    });
+    if (items.length > 0) {
+      const tracks = items.map((video: any) => {
+        const videoId = video.url.includes("v=") ? video.url.split("v=")[1] : video.url.split("/").pop();
+        return {
+          id: videoId,
+          title: video.title,
+          artist: video.uploaderName,
+          album: "YouTube Music",
+          artwork: video.thumbnail,
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          duration: video.duration || 0,
+          genre: "Music",
+          isYoutube: true
+        };
+      });
+      res.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=600');
+      return res.json({ results: tracks, source: "piped", count: tracks.length });
+    }
+  } catch (pipedError) {
+    console.error("Piped API failed, moving to Tier 3:", pipedError);
+  }
+
+  // TIER 3: yt-search (Scraping)
+  try {
+    const searchResults = await yts(query);
+    const videos = searchResults.videos.slice(0, 30);
+    
+    const tracks = videos.map(video => ({
+      id: video.videoId,
+      title: video.title,
+      artist: video.author.name,
+      album: "YouTube",
+      artwork: video.thumbnail,
+      url: video.url,
+      duration: video.duration.seconds,
+      genre: "Music",
+      isYoutube: true
+    }));
 
     res.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=600');
-    res.json({ results: tracks, source: "piped", count: tracks.length });
-  } catch (error) {
-    console.error("Piped search failed:", error);
-    res.status(500).json({ error: "Search failed", details: String(error) });
+    res.json({ results: tracks, source: "yt-search", count: tracks.length });
+  } catch (scrapeError) {
+    console.error("All search tiers failed:", scrapeError);
+    res.status(500).json({ error: "All search tiers failed", details: String(scrapeError) });
   }
 });
 
@@ -123,30 +177,81 @@ app.get(["/api/stream", "/stream"], async (req, res) => {
 });
 
 app.get(["/api/trending", "/trending"], async (req, res) => {
+  const apiKey = process.env.YOUTUBE_API_KEY;
+
+  // TIER 1: Official API
+  if (apiKey) {
+    try {
+      const trendingUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&videoCategoryId=10&maxResults=20&key=${apiKey}`;
+      const response = await fetch(trendingUrl);
+      const data = await response.json();
+
+      if (data.items && data.items.length > 0) {
+        const tracks = data.items.map((item: any) => ({
+          id: item.id,
+          title: item.snippet.title,
+          artist: item.snippet.channelTitle,
+          album: "Trending",
+          artwork: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
+          url: `https://www.youtube.com/watch?v=${item.id}`,
+          duration: 0,
+          genre: "Trending",
+          isYoutube: true
+        }));
+        res.set('Cache-Control', 'public, s-maxage=7200');
+        return res.json({ results: tracks, source: "official_api" });
+      }
+    } catch (e) {
+      console.error("Official Trending API failed, moving to Tier 2:", e);
+    }
+  }
+
+  // TIER 2: Piped API
   try {
     const data = await fetchFromPiped(`/trending?region=US`);
-    
     const videos = data.filter((item: any) => item.type === 'video').slice(0, 30);
 
-    const tracks = videos.map((video: any) => {
-      const videoId = video.url.includes("v=") ? video.url.split("v=")[1] : video.url.split("/").pop();
-      return {
-        id: videoId,
-        title: video.title,
-        artist: video.uploaderName,
-        album: "Trending",
-        artwork: video.thumbnail,
-        url: `https://www.youtube.com/watch?v=${videoId}`,
-        duration: video.duration || 0,
-        genre: "Trending",
-        isYoutube: true
-      };
-    });
+    if (videos.length > 0) {
+      const tracks = videos.map((video: any) => {
+        const videoId = video.url.includes("v=") ? video.url.split("v=")[1] : video.url.split("/").pop();
+        return {
+          id: videoId,
+          title: video.title,
+          artist: video.uploaderName,
+          album: "Trending",
+          artwork: video.thumbnail,
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          duration: video.duration || 0,
+          genre: "Trending",
+          isYoutube: true
+        };
+      });
 
+      res.set('Cache-Control', 'public, s-maxage=7200');
+      return res.json({ results: tracks, source: "piped" });
+    }
+  } catch (pipedError) {
+    console.error("Piped Trending failed, moving to Tier 3:", pipedError);
+  }
+
+  // TIER 3: yt-search
+  try {
+    const searchResults = await yts("trending hits 2025");
+    const tracks = searchResults.videos.slice(0, 20).map(video => ({
+      id: video.videoId,
+      title: video.title,
+      artist: video.author.name,
+      album: "Trending",
+      artwork: video.thumbnail,
+      url: video.url,
+      duration: video.duration.seconds,
+      genre: "Trending",
+      isYoutube: true
+    }));
     res.set('Cache-Control', 'public, s-maxage=7200');
-    res.json({ results: tracks, source: "piped" });
-  } catch (error) {
-    console.error("Piped trending failed:", error);
+    res.json({ results: tracks, source: "yt-search" });
+  } catch (scrapeError) {
+    console.error("All trending tiers failed:", scrapeError);
     res.status(500).json({ error: "Trending failed" });
   }
 });
