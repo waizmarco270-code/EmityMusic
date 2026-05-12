@@ -1,0 +1,6 @@
+{
+  "name": "EmityMusic",
+  "description": "A premium music streaming experience with glassmorphism design and high-fidelity audio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["streaming", "ai-recommendations", "offline-support"]
+}
