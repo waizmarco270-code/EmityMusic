@@ -14,8 +14,8 @@ export function Sidebar() {
   return (
     <aside className="w-64 flex-shrink-0 flex flex-col p-6 h-full border-r border-white/5 bg-black/20 backdrop-blur-xl hidden md:flex">
       <div className="flex items-center gap-3 px-2 mb-10">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-rose-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-          <div className="w-4 h-4 bg-white/20 backdrop-blur-sm rounded-full"></div>
+        <div className="w-8 h-8 rounded-lg overflow-hidden shadow-lg shadow-indigo-500/20">
+          <img src="/logo.jpg" alt="Emity" className="w-full h-full object-cover" />
         </div>
         <span className="text-xl font-bold tracking-tight text-white uppercase">
           Emity

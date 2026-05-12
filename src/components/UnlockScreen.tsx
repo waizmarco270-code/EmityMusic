@@ -34,10 +34,10 @@ export function UnlockScreen() {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ type: 'spring', damping: 12 }}
-            className="w-20 h-20 bg-white/5 border border-white/10 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl relative group"
+            className="w-24 h-24 bg-white/5 border border-white/10 rounded-[2rem] overflow-hidden mx-auto mb-8 shadow-2xl relative group"
           >
-            <div className="absolute inset-0 bg-indigo-500/20 blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
-            <Lock className="text-white/80 group-hover:text-white transition-colors relative" size={32} />
+            <img src="/logo.jpg" alt="Emity Logo" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+            <div className="absolute inset-0 bg-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
           </motion.div>
           
           <h1 className="text-4xl font-bold text-white tracking-tight mb-3">EmityMusic</h1>
