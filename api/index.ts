@@ -3,7 +3,6 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import cors from "cors";
-import yts from "yt-search";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,31 +18,64 @@ app.get(["/api/health", "/health"], (req, res) => {
   res.json({ status: "ok", vercel: !!process.env.VERCEL, timestamp: new Date().toISOString() });
 });
 
+const PIPED_INSTANCES = [
+  "https://pipedapi.kavin.rocks",
+  "https://api-piped.mha.fi",
+  "https://pipedapi.colum.solutions",
+  "https://piped-api.lunar.icu",
+  "https://yt.artemislena.eu",
+  "https://piped-api.garudalinux.org"
+];
+
+async function fetchFromPiped(endpoint: string) {
+  let lastError = null;
+  for (const instance of PIPED_INSTANCES) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const response = await fetch(`${instance}${endpoint}`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (e) {
+      lastError = e;
+      continue;
+    }
+  }
+  throw lastError || new Error("All Piped instances failed");
+}
+
 app.get(["/api/search", "/search"], async (req, res) => {
   const query = req.query.q as string;
   if (!query) return res.status(400).json({ error: "Query required" });
 
   try {
-    const searchResults = await yts(query);
-    const videos = searchResults.videos.length > 0 ? searchResults.videos : (searchResults.all?.filter((i: any) => i.type === 'video') || []);
+    const data = await fetchFromPiped(`/search?q=${encodeURIComponent(query)}&filter=videos`);
     
-    const tracks = videos.slice(0, 30).map((video: any) => ({
-      id: video.videoId,
-      title: video.title,
-      artist: video.author?.name || "Unknown Artist",
-      album: "YouTube Music",
-      artwork: video.thumbnail || video.image,
-      url: video.url,
-      duration: video.duration?.seconds || 0,
-      genre: "Music",
-      isYoutube: true
-    }));
+    const items = (data.items || []).filter((i: any) => i.type === 'video');
+    
+    const tracks = items.map((video: any) => {
+      const videoId = video.url.includes("v=") ? video.url.split("v=")[1] : video.url.split("/").pop();
+      return {
+        id: videoId,
+        title: video.title,
+        artist: video.uploaderName,
+        album: "YouTube Music",
+        artwork: video.thumbnail,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        duration: video.duration || 0,
+        genre: "Music",
+        isYoutube: true
+      };
+    });
 
     res.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=600');
-    res.json({ results: tracks, count: tracks.length });
+    res.json({ results: tracks, source: "piped", count: tracks.length });
   } catch (error) {
-    console.error("Search failed:", error);
-    res.status(500).json({ error: "Search execution failed", details: String(error) });
+    console.error("Piped search failed:", error);
+    res.status(500).json({ error: "Search failed", details: String(error) });
   }
 });
 
@@ -52,31 +84,38 @@ app.get(["/api/stream", "/stream"], async (req, res) => {
   if (!videoId) return res.status(400).json({ error: "ID required" });
 
   try {
-    const instances = [
-      "https://pipedapi.kavin.rocks",
-      "https://api-piped.mha.fi",
-      "https://pipedapi.colum.solutions"
-    ];
-
     let streamUrl = null;
-    for (const instance of instances) {
+    let errorDetails = [];
+
+    for (const instance of PIPED_INSTANCES) {
       try {
-        const response = await fetch(`${instance}/streams/${videoId}`);
-        if (!response.ok) continue;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+        const response = await fetch(`${instance}/streams/${videoId}`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          errorDetails.push(`${instance}: ${response.status}`);
+          continue;
+        }
         const data = await response.json();
         const audioStream = data.audioStreams?.find((s: any) => s.mimeType.includes('audio'));
         if (audioStream) {
           streamUrl = audioStream.url;
           break;
         }
-      } catch (e) { continue; }
+      } catch (e: any) { 
+        errorDetails.push(`${instance}: ${e.message}`);
+        continue; 
+      }
     }
 
     if (streamUrl) {
       res.set('Cache-Control', 'public, s-maxage=3600');
       res.json({ url: streamUrl });
     } else {
-      res.status(404).json({ error: "Stream unavailable" });
+      res.status(404).json({ error: "Stream unavailable", details: errorDetails });
     }
   } catch (error) {
     res.status(500).json({ error: "Stream error" });
@@ -85,21 +124,29 @@ app.get(["/api/stream", "/stream"], async (req, res) => {
 
 app.get(["/api/trending", "/trending"], async (req, res) => {
   try {
-    const searchResults = await yts("trending hits 2025");
-    const tracks = searchResults.videos.slice(0, 20).map(video => ({
-      id: video.videoId,
-      title: video.title,
-      artist: video.author.name,
-      album: "Trending",
-      artwork: video.thumbnail,
-      url: video.url,
-      duration: video.duration.seconds,
-      genre: "Trending",
-      isYoutube: true
-    }));
+    const data = await fetchFromPiped(`/trending?region=US`);
+    
+    const videos = data.filter((item: any) => item.type === 'video').slice(0, 30);
+
+    const tracks = videos.map((video: any) => {
+      const videoId = video.url.includes("v=") ? video.url.split("v=")[1] : video.url.split("/").pop();
+      return {
+        id: videoId,
+        title: video.title,
+        artist: video.uploaderName,
+        album: "Trending",
+        artwork: video.thumbnail,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        duration: video.duration || 0,
+        genre: "Trending",
+        isYoutube: true
+      };
+    });
+
     res.set('Cache-Control', 'public, s-maxage=7200');
-    res.json({ results: tracks });
+    res.json({ results: tracks, source: "piped" });
   } catch (error) {
+    console.error("Piped trending failed:", error);
     res.status(500).json({ error: "Trending failed" });
   }
 });
